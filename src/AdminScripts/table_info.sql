@@ -23,8 +23,11 @@ History:
 2017-10-01 mscaer Fixed columns "rows", pct_stats_off, and pct_unsorted to be correct for DISTSTYLE ALL.
 **********************************************************************************************/
 
-SELECT TRIM(pgn.nspname) AS SCHEMA,
+select sum(mbytes)/1000, is_tmp, schema from (
+  SELECT TRIM(pgn.nspname) AS SCHEMA,
        TRIM(a.name) AS TABLE,
+       TRIM(a.name) LIKE '%tmp%' as is_tmp,
+       a.temp,
        id AS TableId,
        decode(pgc.reldiststyle,
              0, 'EVEN',
@@ -58,6 +61,7 @@ SELECT TRIM(pgn.nspname) AS SCHEMA,
         AS pct_unsorted
 FROM (SELECT db_id,
              id,
+      		temp,
              name,
              SUM(ROWS) AS ROWS,
              MAX(ROWS) AS rows_all_dist,
@@ -66,7 +70,7 @@ FROM (SELECT db_id,
       FROM stv_tbl_perm a
       GROUP BY db_id,
                id,
-               name) AS a
+               name, temp) AS a
   JOIN pg_class AS pgc ON pgc.oid = a.id
   JOIN pg_namespace AS pgn ON pgn.oid = pgc.relnamespace
   LEFT OUTER JOIN (SELECT tbl, COUNT(*) AS mbytes FROM stv_blocklist GROUP BY tbl) b ON a.id = b.tbl
@@ -94,8 +98,11 @@ FROM (SELECT db_id,
         FROM stv_partitions
         WHERE part_begin = 0) AS part ON 1 = 1
 WHERE mbytes IS NOT NULL
+/* AND TRIM(pgn.nspname) != 'embulk_temp_tables'
+AND TRIM(a.name) not like '%bl_tmp%' */
 AND   pgc.relowner > 1
 -- and pgn.nspname = 'schema' -- schemaname
 -- and a.name like 'table%' -- tablename
 -- and det.max_enc = 0 -- non-compressed tables
-ORDER BY mbytes DESC;
+ORDER BY mbytes DESC
+) group by is_tmp, schema
